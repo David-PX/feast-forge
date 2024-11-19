@@ -1,0 +1,74 @@
+version: '3'
+services:
+  ff-users:
+    build:
+      context: ./ff-users
+    ports:
+      - "3001:3000"
+    environment:
+      NODE_ENV: development
+
+  ff-kitchen:
+    build:
+      context: ./ff-kitchen
+    ports:
+      - "3002:3000"
+    environment:
+      NODE_ENV: development
+
+  ff-inventory:
+    build:
+      context: ./ff-inventory
+    ports:
+      - "3003:3000"
+    environment:
+      NODE_ENV: development
+
+  ff-orders:
+    build:
+      context: ./ff-orders
+    ports:
+      - "3004:3000"
+    environment:
+      NODE_ENV: development
+
+  ff-market:
+    build:
+      context: ./ff-market
+    ports:
+      - "3005:3000"
+    environment:
+      NODE_ENV: development
+
+  ff-client:
+    build:
+      context: ./ff-client
+    ports:
+      - "3000:80"
+    environment:
+      NODE_ENV: production
+
+  rabbitmq:
+    image: rabbitmq:management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  redis:
+    image: redis
+    ports:
+      - "6379:6379"
+
+  postgres_db:
+    image: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: feastforge
+
+  mongodb:
+    image: mongo
+    ports:
+      - "27017:27017"
