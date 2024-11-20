@@ -3,8 +3,8 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { JwtModule } from '@nestjs/jwt';
 import appConfig from './config/app.config';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -26,14 +26,7 @@ import appConfig from './config/app.config';
         synchronize: true,
       }),
     }),
-    JwtModule.registerAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET'),
-        signOptions: { expiresIn: configService.get<string>('JWT_EXPIRES_IN') },
-      }),
-    }),
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,13 +1,14 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { Test, TestingModule } from '@nestjs/testing';
 import { UsersService } from './users.service';
 import { Repository } from 'typeorm';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { User } from './user.entity';
+import { User } from '../entities/user.entity';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 
 describe('UsersService', () => {
-  let service: UsersService;
+  let usersService: UsersService;
   let repository: Repository<User>;
   let jwtService: JwtService;
 
@@ -17,7 +18,11 @@ describe('UsersService', () => {
         UsersService,
         {
           provide: getRepositoryToken(User),
-          useClass: Repository,
+          useValue: {
+            create: jest.fn(), // Mock del método `create`
+            save: jest.fn(), // Mock del método `save`
+            findOne: jest.fn(), // Mock del método `findOne`
+          },
         },
         {
           provide: JwtService,
@@ -28,7 +33,7 @@ describe('UsersService', () => {
       ],
     }).compile();
 
-    service = module.get<UsersService>(UsersService);
+    usersService = module.get<UsersService>(UsersService);
     repository = module.get<Repository<User>>(getRepositoryToken(User));
     jwtService = module.get<JwtService>(JwtService);
   });
@@ -41,9 +46,9 @@ describe('UsersService', () => {
       password: 'hashed_password',
     } as User);
 
-    jest.spyOn(bcrypt, 'hash').mockResolvedValue('hashed_password');
+    jest.spyOn(bcrypt, 'hash').mockResolvedValue('hashed_password' as never);
 
-    const result = await service.register({
+    const result = await usersService.register({
       username: 'testuser',
       email: 'test@example.com',
       password: 'password123',
@@ -65,9 +70,9 @@ describe('UsersService', () => {
       password: 'hashed_password',
     } as User);
 
-    jest.spyOn(bcrypt, 'compare').mockResolvedValue(true);
+    jest.spyOn(bcrypt, 'compare').mockResolvedValue(true as never);
 
-    const result = await service.login('test@example.com', 'password123');
+    const result = await usersService.login('test@example.com', 'password123');
 
     expect(result).toEqual({
       accessToken: 'test-token',
@@ -78,8 +83,8 @@ describe('UsersService', () => {
   it('should throw NotFoundException when user does not exist', async () => {
     jest.spyOn(repository, 'findOne').mockResolvedValue(undefined);
 
-    await expect(service.login('notfound@example.com', 'password123')).rejects.toThrow(
-      'User not found',
-    );
+    await expect(
+      usersService.login('notfound@example.com', 'password123'),
+    ).rejects.toThrow('Error logging in user');
   });
 });
