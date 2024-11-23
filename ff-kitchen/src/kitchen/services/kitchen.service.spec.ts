@@ -1,67 +1,89 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { KitchenService } from './kitchen.service';
-import { Repository } from 'typeorm';
-import { getRepositoryToken } from '@nestjs/typeorm';
-import { Dish } from './../entities/dish.entity';
+import { getModelToken } from '@nestjs/mongoose';
+import { Recipe } from './../schemes/recipe.schema';
+import { HttpService } from '@nestjs/axios';
+import { of } from 'rxjs';
+import { NotFoundException } from '@nestjs/common';
 
 describe('KitchenService', () => {
   let service: KitchenService;
-  let repository: Repository<Dish>;
+  let httpService: HttpService;
+  let recipeModel: any;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         KitchenService,
         {
-          provide: getRepositoryToken(Dish),
-          useClass: Repository,
+          provide: getModelToken(Recipe.name),
+          useValue: {
+            find: jest.fn(),
+          },
+        },
+        {
+          provide: HttpService,
+          useValue: {
+            post: jest.fn(),
+          },
         },
       ],
     }).compile();
 
     service = module.get<KitchenService>(KitchenService);
-    repository = module.get<Repository<Dish>>(getRepositoryToken(Dish));
+    httpService = module.get<HttpService>(HttpService);
+    recipeModel = module.get(getModelToken(Recipe.name));
   });
 
-  it('should prepare a new dish', async () => {
-    const createDishDto = {
-      name: 'Spaghetti Bolognese',
-      ingredients: { tomato: 2, meat: 1, onion: 1, spaghetti: 3 },
-    };
-    const savedDish = {
-      id: 1,
-      ...createDishDto,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    jest
-      .spyOn(repository, 'create')
-      .mockReturnValue(createDishDto as unknown as Dish);
-    jest.spyOn(repository, 'save').mockResolvedValue(savedDish as Dish);
-
-    const result = await service.prepareDish(createDishDto);
-
-    expect(result).toEqual(savedDish);
-    expect(repository.create).toHaveBeenCalledWith(createDishDto);
-    expect(repository.save).toHaveBeenCalledWith(createDishDto);
+  it('should be defined', () => {
+    expect(service).toBeDefined();
   });
 
-  it('should get a dish by ID', async () => {
-    const dishId = 1;
-    const foundDish = {
-      id: dishId,
-      name: 'Spaghetti Bolognese',
-      ingredients: { tomato: 2, meat: 1, onion: 1, spaghetti: 3 },
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
+  it('should throw NotFoundException if no recipes are found', async () => {
+    recipeModel.find.mockReturnValue({ exec: jest.fn().mockResolvedValue([]) });
+    await expect(service.prepareDish()).rejects.toThrow(NotFoundException);
+  });
 
-    jest.spyOn(repository, 'findOne').mockResolvedValue(foundDish as Dish);
+  it('should select a random recipe and prepare it', async () => {
+    const recipes = [
+      {
+        _id: '1',
+        name: 'Spaghetti Bolognese',
+        ingredients: [
+          { name: 'tomato', quantity: 2 },
+          { name: 'meat', quantity: 1 },
+        ],
+      },
+    ];
+    recipeModel.find.mockReturnValue({
+      exec: jest.fn().mockResolvedValue(recipes),
+    });
+    (httpService.post as jest.Mock).mockReturnValue(
+      of({ data: { success: true } }),
+    );
 
-    const result = await service.getDishById(dishId);
+    const result = await service.prepareDish();
+    expect(result).toEqual(recipes[0]);
+  });
 
-    expect(result).toEqual(foundDish);
-    expect(repository.findOne).toHaveBeenCalledWith({ where: { id: dishId } });
+  it('should throw NotFoundException if ingredients are not available', async () => {
+    const recipes = [
+      {
+        _id: '1',
+        name: 'Spaghetti Bolognese',
+        ingredients: [
+          { name: 'tomato', quantity: 2 },
+          { name: 'meat', quantity: 1 },
+        ],
+      },
+    ];
+    recipeModel.find.mockReturnValue({
+      exec: jest.fn().mockResolvedValue(recipes),
+    });
+    (httpService.post as jest.Mock).mockReturnValue(
+      of({ data: { success: false } }),
+    );
+
+    await expect(service.prepareDish()).rejects.toThrow(NotFoundException);
   });
 });

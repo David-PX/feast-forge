@@ -1,43 +1,39 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Dish } from './../entities/dish.entity';
-import { CreateDishDto } from './../dtos/create-dish.dto';
+/* eslint-disable prettier/prettier */
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { Recipe } from './../schemes/recipe.schema';
 import logger from './../../utils/logger';
 
 @Injectable()
 export class KitchenService {
   constructor(
-    @InjectRepository(Dish)
-    private dishesRepository: Repository<Dish>,
+    @InjectModel(Recipe.name) private recipeModel: Model<Recipe>,
+    private readonly httpService: HttpService,
   ) {}
 
-  async prepareDish(createDishDto: CreateDishDto): Promise<Dish> {
-    try {
-      logger.info('Preparing dish', { dish: createDishDto });
+  async prepareDish(): Promise<Recipe> {
+    const recipes = await this.recipeModel.find().exec();
 
-      const { name, ingredients } = createDishDto;
-      const newDish = this.dishesRepository.create({ name, ingredients });
-      const savedDish = await this.dishesRepository.save(newDish);
-      logger.info('Dish prepared successfully', {
-        dishId: savedDish.id,
-        name: savedDish.name,
-      });
-      return savedDish;
-    } catch (error) {
-      logger.error('Error preparing dish', { error });
-      throw error;
+    if (recipes.length === 0) {
+      throw new NotFoundException('No recipes found');
     }
-  }
 
-  async getDishById(id: number): Promise<Dish> {
-    logger.info('Fetching dish', { dishId: id });
+    const randomIndex = Math.floor(Math.random() * recipes.length);
+    const selectedRecipe = recipes[randomIndex];
 
-    const dish = await this.dishesRepository.findOne({ where: { id } });
-    if (!dish) {
-      logger.warn('Dish not found', { dishId: id });
-      throw new BadRequestException('Dish not found');
+    const response = await this.httpService.post(`${process.env.INVENTORY_SERVICE_URL}/check`, {
+        ingredients: selectedRecipe.ingredients,
+    }).toPromise();
+
+    if (!response.data.success) {
+      throw new NotFoundException('Ingredients not available');
     }
-    return dish;
+
+    logger.info('Dish prepared successfully', {
+      dishName: selectedRecipe.name,
+    });
+    return selectedRecipe;
   }
 }

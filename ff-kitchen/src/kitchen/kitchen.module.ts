@@ -1,11 +1,15 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { MongooseModule } from '@nestjs/mongoose';
 import { KitchenService } from './services/kitchen.service';
 import { KitchenController } from './controllers/kitchen.controller';
-import { Dish } from './entities/dish.entity';
+import { Recipe, RecipeSchema } from './schemes/recipe.schema';
+import { HttpModule } from '@nestjs/axios';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Dish])],
+  imports: [
+    MongooseModule.forFeature([{ name: Recipe.name, schema: RecipeSchema }]),
+    HttpModule,
+  ],
   providers: [KitchenService],
   controllers: [KitchenController],
 })
