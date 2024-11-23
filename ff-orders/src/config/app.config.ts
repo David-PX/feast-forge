@@ -2,10 +2,6 @@ import { registerAs } from '@nestjs/config';
 
 export default registerAs('app', () => ({
   port: parseInt(process.env.APP_PORT, 10) || 3000,
-  jwt: {
-    JWT_SECRET: process.env.JWT_SECRET,
-    JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN,
-  },
   database: {
     type: 'postgres',
     host: process.env.DB_HOST,

@@ -5,7 +5,7 @@ import { Ingredient } from './ingredient.schema';
 import { HttpService } from '@nestjs/axios';
 import { catchError, firstValueFrom } from 'rxjs';
 import { AxiosError } from 'axios';
-import Logger from './../utils/logger';
+import { RabbitSubscribe, AmqpConnection } from '@golevelup/nestjs-rabbitmq';
 import logger from './../utils/logger';
 
 interface MarketResponse {
@@ -17,68 +17,81 @@ export class InventoryService {
   constructor(
     @InjectModel(Ingredient.name) private ingredientModel: Model<Ingredient>,
     private readonly httpService: HttpService,
+    private readonly amqpConnection: AmqpConnection,
   ) {}
 
-  async checkAndReduceIngredients(
-    ingredients: { name: string; quantity: number }[],
-  ): Promise<{
-    success: boolean;
-    ingredients: { name: string; quantity: number }[];
-  }> {
-    logger.info('Checking and reducing ingredients');
+  @RabbitSubscribe({
+    exchange: 'inventoryExchange',
+    routingKey: 'inventory.request',
+    queue: 'inventoryQueue',
+  })
+  async handleIngredientRequest(message: any): Promise<void> {
+    const { orderId, ingredients } = message;
+    logger.info(`Received ingredient request for order ${orderId}`);
 
-    const updatedIngredients = [];
     let allIngredientsAvailable = true;
+    const updatedIngredients = [];
 
     for (const ingredient of ingredients) {
       const foundIngredient = await this.ingredientModel
         .findOne({ name: ingredient.name })
         .exec();
-      const requiredQuantity = ingredient.quantity;
       let availableQuantity = foundIngredient ? foundIngredient.quantity : 0;
+      logger.info(
+        `Checking availability for ${ingredient.name}: ${availableQuantity} available`,
+      );
 
-      logger.info(`${ingredient.name}: ${availableQuantity} available`);
+      if (availableQuantity < ingredient.quantity) {
+        // Si el inventario local no tiene suficientes ingredientes, pedir al mercado
+        // const requiredQuantity = ingredient.quantity - availableQuantity;
 
-      if (availableQuantity < requiredQuantity) {
-        logger.info('Requesting more ingredients from the market');
+        try {
+          const response = await firstValueFrom(
+            this.httpService
+              .get<MarketResponse>(
+                `${process.env.MARKET_ENDPOINT}?ingredient=${ingredient.name}`,
+              )
+              .pipe(
+                catchError((error: AxiosError) => {
+                  logger.error(
+                    `Error while requesting ingredient from market: ${error.message}`,
+                  );
+                  throw new Error('Market request failed');
+                }),
+              ),
+          );
 
-        const url = `${process.env.MARKET_ENDPOINT}?ingredient=${ingredient.name}`;
-        logger.info(
-          `Requesting ${requiredQuantity} ${ingredient.name} from ${url}`,
-        );
+          const quantitySold = response.data.quantitySold;
+          logger.info(
+            `Market response for ${ingredient.name}: ${quantitySold} units sold`,
+          );
 
-        const { data } = await firstValueFrom(
-          this.httpService.get<MarketResponse>(url).pipe(
-            catchError((error: AxiosError) => {
-              Logger.error(
-                error.response?.data ||
-                  'An error occurred while requesting the market ' + error,
-              );
-              throw new Error(error.toString());
-            }),
-          ),
-        );
-
-        logger.info(`Response: ${JSON.stringify(data.quantitySold)}`);
-
-        if (data.quantitySold > 0) {
-          availableQuantity += data.quantitySold;
+          if (quantitySold > 0) {
+            availableQuantity += quantitySold;
+          } else {
+            allIngredientsAvailable = false;
+          }
+        } catch (error) {
+          allIngredientsAvailable = false;
+          logger.error(
+            `Unable to obtain ingredient ${ingredient.name} from the market + ${error.message}`,
+          );
         }
       }
 
-      if (availableQuantity >= requiredQuantity) {
-        logger.info('Ingredient available');
+      // Actualizar el inventario si se consiguieron más unidades del ingrediente
+      if (availableQuantity >= ingredient.quantity) {
+        updatedIngredients.push({
+          name: ingredient.name,
+          quantity: ingredient.quantity,
+        });
         await this.ingredientModel
           .updateOne(
             { name: ingredient.name },
-            { $set: { quantity: availableQuantity - requiredQuantity } },
+            { $set: { quantity: availableQuantity - ingredient.quantity } },
             { upsert: true },
           )
           .exec();
-        updatedIngredients.push({
-          name: ingredient.name,
-          quantity: requiredQuantity,
-        });
       } else {
         allIngredientsAvailable = false;
         updatedIngredients.push({
@@ -88,9 +101,17 @@ export class InventoryService {
       }
     }
 
-    return {
+    // Publicar la respuesta a `ff-kitchen` con la disponibilidad de los ingredientes
+    this.amqpConnection.publish('inventoryExchange', 'inventory.response', {
+      orderId,
       success: allIngredientsAvailable,
       ingredients: updatedIngredients,
-    };
+    });
+
+    if (allIngredientsAvailable) {
+      logger.info(`All ingredients available for order ${orderId}`);
+    } else {
+      logger.warn(`Ingredients missing for order ${orderId}`);
+    }
   }
 }

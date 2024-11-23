@@ -5,5 +5,5 @@ export class CreateOrderDto {
   readonly userId: number;
 
   @IsString()
-  readonly status: string;
+  readonly status: string = 'pending';
 }

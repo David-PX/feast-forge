@@ -8,6 +8,6 @@ export class KitchenController {
 
   @Post('prepare')
   async prepareDish(): Promise<Recipe> {
-    return this.kitchenService.prepareDish();
+    return;
   }
 }
