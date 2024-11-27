@@ -17,7 +17,6 @@ FeastForge is a microservices-based architecture designed to manage a food prepa
     - [Database Initialization](#database-initialization)
     - [RabbitMQ Setup](#rabbitmq-setup)
   - [Usage](#usage)
-  - [License](#license)
 
 ## Features
 
@@ -148,10 +147,6 @@ FeastForge consists of multiple microservices that communicate asynchronously vi
 
 4. **Inventory Management**:
    - Verify ingredient availability via the logs of `ff-inventory`.
-
-## License
-
-This project is licensed under the MIT License. See the LICENSE file for details.
 
 ---
 
