@@ -1,74 +1,172 @@
-version: '3'
 services:
-  ff-users:
-    build:
-      context: ./ff-users
-    ports:
-      - "3001:3000"
+  kong-db:
+    image: postgres:13
+    container_name: kong-db
     environment:
-      NODE_ENV: development
+      POSTGRES_USER: kong
+      POSTGRES_DB: kong
+      POSTGRES_PASSWORD: kong
+    volumes:
+      - kong-db-data:/var/lib/postgresql/data
+    networks:
+      - feastforge-network
 
-  ff-kitchen:
-    build:
-      context: ./ff-kitchen
-    ports:
-      - "3002:3000"
+  kong-migrations:
+    image: kong:latest
+    container_name: kong-migrations
+    depends_on:
+      - kong-db
     environment:
-      NODE_ENV: development
+      KONG_DATABASE: "postgres"
+      KONG_PG_HOST: kong-db
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: kong
+    command: ["kong", "migrations", "bootstrap"]
+    networks:
+      - feastforge-network
 
-  ff-inventory:
-    build:
-      context: ./ff-inventory
-    ports:
-      - "3003:3000"
+  kong:
+    image: kong:latest
+    container_name: kong
+    depends_on:
+      - kong-db
+      - kong-migrations
     environment:
-      NODE_ENV: development
-
-  ff-orders:
-    build:
-      context: ./ff-orders
+      KONG_DATABASE: "postgres"
+      KONG_PG_HOST: kong-db
+      KONG_PG_PASSWORD: kong
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      KONG_PROXY_LISTEN: 0.0.0.0:8000
     ports:
-      - "3004:3000"
+      - 8000:8000  # Gateway requests
+      - 8001:8001  # Admin API
+    volumes:
+      - kong-data:/usr/local/kong
+    networks:
+      - feastforge-network
+
+  ff-rabbitmq:
+    image: 'rabbitmq:3-management'
+    container_name: ff-rabbitmq
+    ports:
+      - '5672:5672'
+      - '15672:15672' # RabbitMQ Management Dashboard
     environment:
-      NODE_ENV: development
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - feastforge-network
 
-  ff-market:
-    build:
-      context: ./ff-market
+  ff-db:
+    image: postgres:13
+    container_name: ff-db
     ports:
-      - "3005:3000"
+      - "5433:5432"
     environment:
-      NODE_ENV: development
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: feastforgedb
+    networks:
+      - feastforge-network
 
-  ff-client:
-    build:
-      context: ./ff-client
-    ports:
-      - "3000:80"
-    environment:
-      NODE_ENV: production
-
-  rabbitmq:
-    image: rabbitmq:management
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-
-  redis:
-    image: redis
-    ports:
-      - "6379:6379"
-
-  postgres_db:
-    image: postgres
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: feastforge
-
-  mongodb:
-    image: mongo
+  ff-mongodb:
+    image: mongo:latest
+    container_name: ff-mongodb
     ports:
       - "27017:27017"
+    networks:
+      - feastforge-network
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: adminpassword
+
+  ff-users:
+    build: ./ff-users
+    container_name: ff-users
+    depends_on:
+      - ff-db
+    environment:
+      DB_HOST: ff-db
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: feastforgedb
+      APP_PORT: 3001
+      JWT_SECRET: la_responsabilidad_del_poder_es_la_responsabilidad_de_todos_key_para_que_no_sea_tan_facil_de_adivinar
+      JWT_EXPIRES_IN: 2h
+      AWS_ACCESS_KEY_ID: AWS_ACCESS_KEY_ID
+      AWS_SECRET_ACCESS_KEY: AWS_ACCESS_KEY_ID
+      AWS_REGION: AWS_ACCESS_KEY_ID
+      LOG_GROUP_NAME: AWS_ACCESS_KEY_ID
+      LOG_STREAM_NAME: AWS_ACCESS_KEY_ID
+    ports:
+      - "3001:3001"
+    networks:
+      - feastforge-network
+
+  ff-orders:
+    build: ./ff-orders
+    container_name: ff-orders
+    depends_on:
+      - ff-db
+      - ff-rabbitmq
+    environment:
+      RABBITMQ_URI: amqp://guest:guest@ff-rabbitmq:5672
+      DB_HOST: ff-db
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: feastforgedb
+      APP_PORT: 3002
+    ports:
+      - "3002:3002"
+    networks:
+      - feastforge-network
+
+  ff-kitchen:
+    build: ./ff-kitchen
+    container_name: ff-kitchen
+    depends_on:
+      - ff-rabbitmq
+      - ff-mongodb
+    environment:
+      RABBITMQ_URI: amqp://guest:guest@ff-rabbitmq:5672
+      MONGODB_URI: mongodb://admin:adminpassword@ff-mongodb:27017/kitchen_db?authSource=admin
+    ports:
+      - "3003:3003"
+    networks:
+      - feastforge-network
+
+  ff-inventory:
+    build: ./ff-inventory
+    container_name: ff-inventory
+    depends_on:
+      - ff-rabbitmq
+      - ff-mongodb
+    environment:
+      RABBITMQ_URI: amqp://guest:guest@ff-rabbitmq:5672
+      MONGODB_URI: mongodb://admin:adminpassword@ff-mongodb:27017/kitchen_db?authSource=admin
+      MARKET_ENDPOINT: https://recruitment.alegra.com/api/farmers-market/buy
+    ports:
+      - "3004:3004"
+    networks:
+      - feastforge-network
+
+volumes:
+  kong-db-data:
+  kong-data:
+  postgres_data:
+  mongodb_data:
+
+networks:
+  feastforge-network:
+    driver: bridge

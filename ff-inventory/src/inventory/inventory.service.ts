@@ -27,6 +27,12 @@ export class InventoryService {
   })
   async handleIngredientRequest(message: any): Promise<void> {
     const { orderId, ingredients } = message;
+
+    if (!orderId || !ingredients || !Array.isArray(ingredients)) {
+      logger.error('Invalid message format', { message });
+      throw new Error('Invalid message format');
+    }
+
     logger.info(`Received ingredient request for order ${orderId}`);
 
     let allIngredientsAvailable = true;
@@ -37,19 +43,18 @@ export class InventoryService {
         .findOne({ name: ingredient.name })
         .exec();
       let availableQuantity = foundIngredient ? foundIngredient.quantity : 0;
+
       logger.info(
         `Checking availability for ${ingredient.name}: ${availableQuantity} available`,
       );
 
       if (availableQuantity < ingredient.quantity) {
-        // Si el inventario local no tiene suficientes ingredientes, pedir al mercado
-        // const requiredQuantity = ingredient.quantity - availableQuantity;
-
         try {
           const response = await firstValueFrom(
             this.httpService
               .get<MarketResponse>(
                 `${process.env.MARKET_ENDPOINT}?ingredient=${ingredient.name}`,
+                { timeout: 5000 },
               )
               .pipe(
                 catchError((error: AxiosError) => {
@@ -61,16 +66,13 @@ export class InventoryService {
               ),
           );
 
-          const quantitySold = response.data.quantitySold;
+          const quantitySold = response.data.quantitySold || 0;
+
           logger.info(
             `Market response for ${ingredient.name}: ${quantitySold} units sold`,
           );
 
-          if (quantitySold > 0) {
-            availableQuantity += quantitySold;
-          } else {
-            allIngredientsAvailable = false;
-          }
+          availableQuantity += quantitySold;
         } catch (error) {
           allIngredientsAvailable = false;
           logger.error(
@@ -79,12 +81,12 @@ export class InventoryService {
         }
       }
 
-      // Actualizar el inventario si se consiguieron más unidades del ingrediente
       if (availableQuantity >= ingredient.quantity) {
         updatedIngredients.push({
           name: ingredient.name,
           quantity: ingredient.quantity,
         });
+
         await this.ingredientModel
           .updateOne(
             { name: ingredient.name },
@@ -108,10 +110,10 @@ export class InventoryService {
       ingredients: updatedIngredients,
     });
 
-    if (allIngredientsAvailable) {
-      logger.info(`All ingredients available for order ${orderId}`);
-    } else {
-      logger.warn(`Ingredients missing for order ${orderId}`);
-    }
+    logger.info(
+      allIngredientsAvailable
+        ? `All ingredients available for order ${orderId}`
+        : `Ingredients missing for order ${orderId}`,
+    );
   }
 }

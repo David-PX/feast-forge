@@ -3,13 +3,14 @@ import { OrdersModule } from './orders/orders.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import appConfig from './config/app.config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { RabbitMQConfigModule } from './config/rabbitmq.config';
 
 @Module({
   imports: [
-    OrdersModule,
     ConfigModule.forRoot({
       load: [appConfig],
       isGlobal: true, // Hacemos que las variables de entorno estén disponibles globalmente
+      envFilePath: '.env',
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -25,6 +26,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
         synchronize: true,
       }),
     }),
+    OrdersModule,
+    RabbitMQConfigModule,
   ],
   controllers: [],
   providers: [],

@@ -6,7 +6,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
   imports: [
     ConfigModule,
     RabbitMQModule.forRootAsync(RabbitMQModule, {
-      useFactory: (configService: ConfigService) => ({
+      useFactory: () => ({
         exchanges: [
           {
             name: 'orderExchange',
@@ -21,11 +21,12 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
             type: 'topic',
           },
         ],
-        uri: configService.get<string>('RABBITMQ_URI'),
+        uri: process.env.RABBITMQ_URI,
         connectionInitOptions: { wait: false },
       }),
       inject: [ConfigService],
     }),
   ],
+  exports: [RabbitMQModule],
 })
 export class RabbitMQConfigModule {}

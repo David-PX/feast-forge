@@ -16,6 +16,13 @@ export class OrdersService {
 
   async createOrder(createOrderDto: CreateOrderDto): Promise<Order> {
     try {
+      // Validar datos de entrada
+      if (!createOrderDto.userId || !createOrderDto.status) {
+        throw new NotFoundException(
+          'Required fields are missing in createOrderDto',
+        );
+      }
+
       logger.info('Creating order', { createOrderDto });
 
       const newOrder = this.ordersRepository.create(createOrderDto);
@@ -50,14 +57,22 @@ export class OrdersService {
 
     // Lógica para actualizar la orden con el nuevo estado
     if (!orderId || !status) {
+      logger.warn('Order ID or status missing from message');
       throw new NotFoundException('Order ID or status missing from message');
     }
 
-    // Simulación de actualización en la base de datos
-    logger.info(`Order ${orderId} status updated to: ${status}`);
+    const order = await this.ordersRepository.findOne({
+      where: { id: orderId },
+    });
+    if (!order) {
+      logger.error('Order not found for update', { orderId });
+      throw new NotFoundException('Order not found');
+    }
 
-    // Aquí se podría agregar lógica para notificar al cliente el cambio de estado
-    // Esto podría ser a través de WebSockets, APIs, etc.
+    order.status = status;
+    await this.ordersRepository.save(order);
+
+    logger.info(`Order ${orderId} status updated to: ${status}`);
   }
 
   async getOrderById(id: number): Promise<Order> {

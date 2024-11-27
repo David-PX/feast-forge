@@ -4,9 +4,9 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 
 @Module({
   imports: [
-    ConfigModule,
+    ConfigModule.forRoot(),
     RabbitMQModule.forRootAsync(RabbitMQModule, {
-      useFactory: (configService: ConfigService) => ({
+      useFactory: () => ({
         exchanges: [
           {
             name: 'orderExchange',
@@ -17,11 +17,15 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
             type: 'topic',
           },
         ],
-        uri: configService.get<string>('RABBITMQ_URI'),
-        connectionInitOptions: { wait: false },
+        uri: process.env.RABBITMQ_URI,
+        connectionInitOptions: {
+          wait: true, // Espera a que el broker esté disponible
+          reconnectTimeInSeconds: 5,
+        },
       }),
       inject: [ConfigService],
     }),
   ],
+  exports: [RabbitMQModule],
 })
 export class RabbitMQConfigModule {}

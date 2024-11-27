@@ -1,7 +1,7 @@
 import { registerAs } from '@nestjs/config';
 
 export default registerAs('app', () => ({
-  port: parseInt(process.env.APP_PORT, 10) || 3000,
+  port: parseInt(process.env.PORT, 10) || 3000,
   database: {
     type: 'postgres',
     host: process.env.DB_HOST,
@@ -10,4 +10,5 @@ export default registerAs('app', () => ({
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
   },
+  RABBITMQ_URI: process.env.RABBITMQ_URI,
 }));

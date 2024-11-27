@@ -7,7 +7,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../entities/user.entity';
 import { CreateUserDto } from '../dtos/create-user.dto';
-import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import logger from '../../utils/logger';
 
@@ -25,11 +24,10 @@ export class UsersService {
 
       logger.info(`Registering user with email: ${email}`);
 
-      const hashedPassword = await bcrypt.hash(password, 10);
       const newUser = this.usersRepository.create({
         username,
         email,
-        password: hashedPassword,
+        password,
       });
 
       const savedUser = await this.usersRepository.save(newUser);
@@ -54,8 +52,7 @@ export class UsersService {
         throw new NotFoundException('User not found');
       }
 
-      const isPasswordValid = await bcrypt.compare(password, user.password);
-      if (!isPasswordValid) {
+      if (user.password !== password) {
         logger.warn(`Invalid credentials for user with email ${email}`);
         throw new BadRequestException('Invalid credentials');
       }

@@ -7,6 +7,7 @@ import { KitchenModule } from './kitchen/kitchen.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: '.env',
     }),
     MongooseModule.forRoot(process.env.MONGODB_URI),
     KitchenModule,
